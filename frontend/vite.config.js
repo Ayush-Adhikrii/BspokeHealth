@@ -8,6 +8,8 @@ const certDir = path.resolve(__dirname, '.cert');
 const keyPath = path.join(certDir, 'key.pem');
 const certPath = path.join(certDir, 'cert.pem');
 
+
+
 let httpsConfig = undefined;
 try {
   if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
