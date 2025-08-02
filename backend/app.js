@@ -95,7 +95,6 @@ const medicineRoutes = require("./routes/medicineRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 
-// Routes that don't need CSRF protection
 app.use("/api/auth", authRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/uploads", fileRoutes);
@@ -104,7 +103,6 @@ app.use("/api/doctors", doctorRoutes);
 app.use("/api/stats", statRoutes);
 app.use("/api/disease", diseaseRoutes);
 
-// CSRF protection for routes that need it
 const csrfProtectedRoutes = express.Router();
 csrfProtectedRoutes.use(csurf({
   cookie: {
