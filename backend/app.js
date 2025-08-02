@@ -48,31 +48,30 @@ prisma
   .then(() => console.log("PostgreSQL connected successfully"))
   .catch((error) => console.error("PostgreSQL connection failed:", error));
 
-// Global Middleware
 app.use(helmet());
 app.use(cors({
-  origin: "https://localhost:5173",
+  origin: ["https://localhost:5173", "https://localhost:5173", "https://localhost:3000"],
   credentials: true
 }));
 app.use(express.json());
 app.use(express.static("../frontend/dist"));
 app.use(cookieParser());
 
-// CSRF protection - must be after cookieParser but before routes
-app.use(csurf({ 
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict'
-  }
-}));
-
-// CSRF token endpoint for frontend
-app.get("/api/csrf-token", (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", message: "Backend server is running" });
 });
 
-// Rate Limiting
+app.get("/api/csrf-token", (req, res) => {
+  const crypto = require('crypto');
+  const token = crypto.randomBytes(32).toString('hex');
+  res.cookie('XSRF-TOKEN', token, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  });
+  res.json({ csrfToken: token });
+});
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
@@ -82,7 +81,6 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Routes that don't need CSRF protection
 const authRoutes = require("./routes/authRoutes");
 const kycRoutes = require("./routes/kycRoutes");
 const fileRoutes = require("./routes/fileRoutes");
@@ -94,11 +92,10 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const statRoutes = require("./routes/statRoutes");
 const diseaseRoutes = require("./routes/diseaseRoutes");
 const medicineRoutes = require("./routes/medicineRoutes");
-const chatRoutes = require("./routes/chatRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 
-// Apply CSRF protection only to routes that need it
+// Routes that don't need CSRF protection
 app.use("/api/auth", authRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/uploads", fileRoutes);
@@ -106,19 +103,34 @@ app.use("/api/availability", availabilityRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/stats", statRoutes);
 app.use("/api/disease", diseaseRoutes);
-app.use("/api/appointments", appointmentRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/medicines", medicineRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/analytics", analyticsRoutes);
-app.use("/api/admin", adminRoutes);
 
-// CSRF Error Handler
+// CSRF protection for routes that need it
+const csrfProtectedRoutes = express.Router();
+csrfProtectedRoutes.use(csurf({
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  },
+  ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
+  value: (req) => {
+    return req.headers['x-csrf-token'];
+  }
+}));
+
+csrfProtectedRoutes.use("/api/appointments", appointmentRoutes);
+csrfProtectedRoutes.use("/api/payments", paymentRoutes);
+csrfProtectedRoutes.use("/api/notifications", notificationRoutes);
+csrfProtectedRoutes.use("/api/medicines", medicineRoutes);
+csrfProtectedRoutes.use("/api/analytics", analyticsRoutes);
+csrfProtectedRoutes.use("/api/admin", adminRoutes);
+
+app.use(csrfProtectedRoutes);
+
 app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN') {
     console.log('CSRF token validation failed:', req.url);
-    return res.status(403).json({ 
+    return res.status(403).json({
       error: 'CSRF token validation failed',
       message: 'Invalid or missing CSRF token'
     });
@@ -126,16 +138,14 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// Error Handling
 const { handleFileUploadErrors } = require("./middleware/errorHandler");
 app.use(handleFileUploadErrors);
 
-// Start Server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   if (useHttps) {
     console.log(`Server running on https://localhost:${PORT}`);
   } else {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on https://localhost:${PORT}`);
   }
 });
